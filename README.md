@@ -1,7 +1,4 @@
-# swaiot_tools-demo
-使用swaiot-tools生成SDK的简单对接demo
-
-####  智能设备产品接入Swaiot开放平台介绍
+#  智能设备产品接入Swaiot开放平台介绍
 
 以下以WIFI智能灯产品为案例，说明如何完成一个传统设备的Swaiot物端接入基本流程：
 ### 简介：
@@ -15,6 +12,8 @@
 ​	DEMO下载地址：
 
 ​		https://github.com/swaiot/swaiot_tools-demo
+
+
 
 ​	*本说明版权属于 深圳创维-RGB电子有限公司，由SWAIOT实验室维护。如有更改，恕不另行通知。20206.16*
 
@@ -45,7 +44,7 @@
 |          |              |               |              |           |            |              |
 |          |              |               |              |           |            |              |
 |          |              |               |              |           |            |              |
-| 属性设置 | 支持uint8    | 支持uint16    | 支持uint32   | 支持float | 支持string |              |
+| 属性设置 | 支持uint8    | 支持uint16    | 支持int32   | 支持float | 支持string |              |
 | 状态     | TRUE         | FALSE         | FALSE        | FALSE     | FALSE      |              |
 |          |              |               |              |           |            |              |
 | 平台配置 |              |               |              |           |            |              |
@@ -120,8 +119,8 @@ void USART2_IRQHandler(void)
 ```c
 #include "iot_user_config.h"
 …………………………
-
-uint8_t sn_num[32]={0x00};    // 本程序不使用此功能，但支持智慧屏或升级的程序需要添加
+ENUM_WIFI_LED_STATE wifiLed;  // WIFI灯状态标志位。配网闪烁，路由器连接成功快闪、连接成功常亮、服务器断开连接关闭
+uint8_t sn_num[32]={0x00};    // 本程序不使用此功能，但支持智慧屏 的程序需要添加
 char  ver_mcu[4]={1,0,0,0};   // 本程序不使用此功能，但支持智慧屏或升级的程序需要添加
 char *type_mcu = "STM32F103"; // 本程序不使用此功能，但支持智慧屏或升级的程序需要添加
 …………………………
@@ -135,6 +134,7 @@ int main(void)
   while (1){
     checkLedStatus();           // check and update status, 属性上报检测
     checkControlBtn();          // check and update status, 配网、工厂按键检测
+    wifiLedStatus(wifiLed);		// check and update status, 判断并切换WIFI灯状态
     if(frame_10Hz ==1){         // 10Hz flag
       frame_10Hz = 0;           // clean flag
       swaiotEventHandler_10HZ();// 周期调用IOT处理函数
@@ -187,8 +187,8 @@ void checkLedStatus(void)
 ​				①、修改数据更新回调函数,添加LED状态控制代码。
 
 ```c
-void receiveAPropS8(char *name, iot_s8_t value){  // 此函数由工具自动生成
-    // has a s8 data 
+void receiveAPropU8(char *name, iot_u8_t value){  // 此函数原型由工具自动生成，请根据状态添加。
+    // has a uint8_t data 
     if(0 == strcmp(name, PROD_STATUS_NAME)){      // 判断属性名称，工具自动生成
         if(value == 0){
             GPIO_SetBits(GPIOB, GPIO_Pin_5);      // 更新LED状态
@@ -198,7 +198,6 @@ void receiveAPropS8(char *name, iot_s8_t value){  // 此函数由工具自动生
             sendcmdPropStatus(1);
         }
     } 
-
 }
 ```
 
@@ -207,16 +206,37 @@ void receiveAPropS8(char *name, iot_s8_t value){  // 此函数由工具自动生
 ​						如果想通过模块状态显示wifi连接状态，在如下回调中监听模块状态。（须在工具中开启  监听模组状态）
 
 ```c
+extern ENUM_WIFI_LED_STATE wifiLed;	// 引用外部变量
 /*************************************************************************** 
 Function....: moduleStateChangeHandler 
 Description.: Callback function for updating module state 
 Parameters..: ENUM_MODULE_STATE_SKY state : it is an enumeration of states. Please refer to the iot_base.h 
 Return......: NONE 
 ****************************************************************************/ 
-  void moduleStateChangeHandler(ENUM_MODULE_STATE_SKY state){ 
-      // update state 
-  } 
+void moduleStateChangeHandler(ENUM_MODULE_STATE_SKY state){ 
+    // update state 
+  if(state == STA_STATE_CONNECTED){
+      wifiLed = WIFI_LED_SHORT_BLINK;
+  }else if(state == STA_STATE_CONFIGING){
+      wifiLed = WIFI_LED_LONG_BLINK;
+  }else if(state == STA_STATE_CONNECTED_SERVER){
+      wifiLed = WIFI_LED_ON;
+  }else if(state == STA_STATE_DISCONNECT_SERVER){
+      wifiLed = WIFI_LED_OFF;
+  }
+} 
+
 ```
+
+​						其中一般情况建议在未联网状态下WIFI灯闪烁5分钟，在收到：
+
+​									STA_STATE_CONFIGING 慢速闪烁（最长5分钟）
+
+​									STA_STATE_CONNECTED 快速闪烁（最长5分钟）
+
+​									STA_STATE_CONNECTED_SERVER 常亮
+
+​									STA_STATE_DISCONNECT_SERVER 熄灭
 
 ​						如果配置了其他扩展功能，请根据代码注释添加相应的回调。
 
